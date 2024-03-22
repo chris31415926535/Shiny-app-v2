@@ -1,0 +1,9 @@
+# flyctl launch added from .gitignore
+**/.Rproj.user
+**/.Rhistory
+**/.Rdata
+**/.httr-oauth
+**/.DS_Store
+**/.quarto
+**/db/**
+fly.toml

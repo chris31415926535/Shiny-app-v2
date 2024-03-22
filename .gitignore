@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto
+db/**
+data/**
+data/var-trimmed-2024-03-22.csv
