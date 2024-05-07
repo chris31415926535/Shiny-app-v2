@@ -1,5 +1,7 @@
-# docker build -t vincent-shiny-test .
-#fly deploy --local-only --image vincent-shiny-test
+# TO BUILD DOCKER IMAGE:
+#   docker build -t closm-shiny-app .
+# TO DEPLOY DOCKER IMAGE:
+#   fly deploy --local-only --image closm-shiny-app
 library(shiny)
 library(DT)
 library(readr)
@@ -10,6 +12,9 @@ ui <- fluidPage(
   titlePanel("CLOSM - Data Catalogue"),
   
   # Create a new Row in the UI for selectInputs
+  # Populate the select inputs with placeholder values. We will update them
+  #   in the server() function below once the data is loaded
+  
   fluidRow(
     column(4,
            selectInput("data_holding",
@@ -26,19 +31,22 @@ ui <- fluidPage(
                        "Dataset",
                        choices = "Loading...")
     ),
-    column(4,
-           selectInput("lang_var",
-                       "Language variable",
-                       choices = "Loading...")
-    ),
-    column(4,
-           selectInput("lang_off",
-                       "Official Language",
-                       choices = "Loading...")
-    ),
+    
+    # FIXME -- commenting these out for now pending advice from Vincent
+    # column(4,
+    #        selectInput("lang_var",
+    #                    "Language variable",
+    #                    choices = "Loading...")
+    # ),
+    # column(4,
+    #        selectInput("lang_off",
+    #                    "Official Language",
+    #                    choices = "Loading...")
+    # ),
     # Create a new row for the table.
     DT::dataTableOutput("table")
-  )
+  ),
+  shiny::downloadButton('downloadData', 'Download')
 )
 
 
@@ -46,60 +54,74 @@ ui <- fluidPage(
 
 
 server <- function(input, output, session) {
-
+  
+  # Load the pre-processed data:
   metadata_raw <- readr::read_csv("data/var-trimmed-2024-03-22.csv"
-                                  #, n_max = 1000000
-                                  )
+                                  #, n_max = 10000 # for debugging
+  )
   
   
+  # Update the select inputs once the data is loaded
   shiny::updateSelectInput(inputId = "data_holding",
                            label = "Data Holding",
                            choices = c("All",
                                        unique(as.character(metadata_raw$var_data_holding))))
-
+  
   shiny::updateSelectInput(inputId = "lib",
                            label = "Library",
                            choices = c("All",
-                             unique(as.character(metadata_raw$var_lib))))
+                                       unique(as.character(metadata_raw$var_lib))))
   
   
   shiny::updateSelectInput(inputId = "dataset",
                            label = "Dataset",
                            choices = c("All",
-                             unique(as.character(metadata_raw$var_ds))))
+                                       unique(as.character(metadata_raw$var_ds))))
   
   
   shiny::updateSelectInput(inputId = "lang_var",
                            label = "Language variable",
                            choices = c("All",
-                             unique(as.character(metadata_raw$lang_var_confirmed_VMS))))
+                                       unique(as.character(metadata_raw$lang_var_confirmed_VMS))))
   
   
   shiny::updateSelectInput(inputId = "lang_off",
                            label = "Official Language",
                            choices = c("All",
-                             unique(as.character(metadata_raw$lang_var_confirmed_VMS))))
+                                       unique(as.character(metadata_raw$lang_var_confirmed_VMS))))
   
-  # Filter data based on selections
-  output$table <- DT::renderDataTable(DT::datatable({
+  # create a reactive object to hold the filtered data.
+  # this logic used to be inside DT::renderDataTable(), but we move it outside
+  # so that the filtered data can be re-used in the downloadHandler()
+  reactive_filtered_data <-   shiny::reactive({
     data <- metadata_raw
-
+    
     if (input$data_holding != "All") {
       data <- data[data$var_data_holding == input$data_holding,]
     }
     if (input$lib != "All") {
-      data <- dplyr::filter(data, var_lib == input$lib)# data[data$var_lib == input$lib,]
+      # use dplyr::filter, the base R approach was not working
+      data <- dplyr::filter(data, var_lib == input$lib)
     }
     if (input$dataset != "All") {
       data <- data[data$var_ds == input$dataset,]
     }
-    if (input$lang_var != "All") {
-      data <- data[data$lang_var_confirmed_VMS == input$lang_var,]
-    }
-    if (input$lang_off != "All") {
-      data <- data[data$official_lang_var_VMS == input$lang_off,]
-    }
+    
+    # FIXME -- Commenting these out for now pending advice from Vincent
+    # if (input$lang_var != "All") {
+    #   data <- data[data$lang_var_confirmed_VMS == input$lang_var,]
+    # }
+    # if (input$lang_off != "All") {
+    #   data <- data[data$official_lang_var_VMS == input$lang_off,]
+    # }
+    
     data
+  }) # end reactive_filtered_data()
+  
+  
+  # Filter data based on selections
+  output$table <- DT::renderDataTable(DT::datatable({
+    reactive_filtered_data()
   }, 
   options = list(
     pageLength = 10,      # Set number of rows per page
@@ -109,6 +131,17 @@ server <- function(input, output, session) {
     scrollX = TRUE        # Enable horizontal scrolling
   ),
   filter = 'top' ))
+  
+  
+  
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste('data-', Sys.Date(), '.csv', sep='')
+    },
+    content = function(con) {
+      write.csv(reactive_filtered_data(), con)
+    }
+  )
   
 }
 
